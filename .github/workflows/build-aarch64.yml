@@ -1,4 +1,4 @@
-name: Build JRE 25 (AArch64)
+name: Build JRE 25 (AArch64 for PojavLauncher)
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Bootstrap JDK (Java 24)
@@ -25,6 +25,7 @@ jobs:
           sudo apt-get install -y \
             build-essential \
             autoconf \
+            file \
             libfontconfig1-dev \
             libfreetype6-dev \
             libx11-dev \
@@ -35,21 +36,56 @@ jobs:
             libxt-dev \
             libasound2-dev \
             libcups2-dev \
-            libffi-dev
+            libffi-dev \
+            libz-dev \
+            xz-utils
 
-      - name: Configure OpenJDK / JRE
+      - name: Clone OpenJDK 25 Source Code
         run: |
-          bash configure \
+          echo "Mengunduh source code terbaru OpenJDK (Java 25)..."
+          git clone --depth 1 https://github.com/openjdk/jdk.git openjdk-src
+
+      - name: Configure OpenJDK 25
+        working-directory: openjdk-src
+        run: |
+          chmod +x configure
+          ./configure \
             --with-boot-jdk=$JAVA_HOME \
             --with-debug-level=release \
-            --disable-warnings-as-errors
+            --disable-warnings-as-errors \
+            --with-jvm-variants=server \
+            --enable-headless-only=no
 
-      - name: Build JRE / JDK Image
+      - name: Compile JDK Image
+        working-directory: openjdk-src
         run: |
-          make images
+          JOBS=$(nproc)
+          echo "Memulai kompilasi dengan $JOBS core..."
+          make JOBS=$JOBS images
 
-      - name: Upload Artifact
+      - name: Generate Minimal Pojav JRE (via jlink)
+        run: |
+          echo "Mencari path hasil build JDK..."
+          JDK_BUILD_DIR=$(find openjdk-src/build -maxdepth 2 -type d -name "images" | head -n 1)/jdk
+          
+          echo "Membuat paket JRE khusus PojavLauncher..."
+          $JDK_BUILD_DIR/bin/jlink \
+            --module-path $JDK_BUILD_DIR/jmods \
+            --add-modules java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.management.rmi,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.se,java.security.jgss,java.security.sasl,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.accessibility,jdk.charsets,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.dynalink,jdk.httpserver,jdk.jartool,jdk.javadoc,jdk.jcmd,jdk.jconsole,jdk.jdeps,jdk.jfr,jdk.jinfo,jdk.jmap,jdk.jps,jdk.jstatd,jdk.localedata,jdk.management,jdk.management.jfr,jdk.naming.dns,jdk.naming.rmi,jdk.net,jdk.nio.mapmode,jdk.sctp,jdk.security.auth,jdk.security.jgss,jdk.unsupported,jdk.unsupported.desktop,jdk.xml.dom \
+            --strip-debug \
+            --no-man-pages \
+            --no-header-files \
+            --compress=2 \
+            --output jre-25-pojav
+
+      - name: Package JRE as .tar.xz for PojavLauncher
+        run: |
+          echo "Mengemas ke format .tar.xz dengan kompresi maksimal..."
+          # Menggunakan XZ_OPT=-9 untuk tingkat kompresi terbaik agar file sangat kecil
+          XZ_OPT=-9 tar -cJf jre-25-aarch64-pojav.tar.xz -C jre-25-pojav .
+
+      - name: Upload Artifact (.tar.xz)
         uses: actions/upload-artifact@v4
         with:
-          name: jre-25-aarch64
-          path: build/*/images/jdk
+          name: jre-25-aarch64-pojav-xz
+          path: jre-25-aarch64-pojav.tar.xz
