@@ -118,11 +118,35 @@ jobs:
         export CUPS_DIR=$PWD/cups-2.2.4
         export BOOT_JDK=$PWD/jdk-24.0.2
 
-        export CC=$TOOLCHAIN/bin/aarch64-linux-android24-clang
-        export CXX=$TOOLCHAIN/bin/aarch64-linux-android24-clang++
-        export AR=$TOOLCHAIN/bin/llvm-ar
-        export LD=$TOOLCHAIN/bin/ld.lld
-        export AS=$TOOLCHAIN/bin/llvm-as
+        # Buat Wrapper Compiler untuk mengatasi bug pemeriksaan -V Clang host
+        mkdir -p $PWD/compiler_wrapper
+        cat > $PWD/compiler_wrapper/clang << 'EOF'
+        #!/bin/bash
+        REAL_CC="/android-ndk-r28/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+        for arg in "$@"; do
+          if [ "$arg" = "-V" ] || [ "$arg" = "-qversion" ]; then
+            exec /usr/bin/clang --version
+          fi
+        done
+        exec $REAL_CC "$@"
+        EOF
+        
+        cat > $PWD/compiler_wrapper/clang++ << 'EOF'
+        #!/bin/bash
+        REAL_CXX="/android-ndk-r28/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++"
+        for arg in "$@"; do
+          if [ "$arg" = "-V" ] || [ "$arg" = "-qversion" ]; then
+            exec /usr/bin/clang++ --version
+          fi
+        done
+        exec $REAL_CXX "$@"
+        EOF
+        
+        sed -i "s|/android-ndk-r28|$PWD/android-ndk-r28|g" $PWD/compiler_wrapper/clang
+        sed -i "s|/android-ndk-r28|$PWD/android-ndk-r28|g" $PWD/compiler_wrapper/clang++
+        chmod +x $PWD/compiler_wrapper/clang $PWD/compiler_wrapper/clang++
+        
+        export PATH=$PWD/compiler_wrapper:$PATH
 
         export CFLAGS="-O3 -fPIC -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types"
         export CXXFLAGS="-O3 -fPIC -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types"
