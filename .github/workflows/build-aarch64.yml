@@ -38,15 +38,16 @@ jobs:
           libfreetype6-dev \
           libpng-dev
 
-    - name: Download Android NDK r28
+    - name: Download Android NDK r26d
       run: |
-        echo "Downloading Android NDK r28..."
-        wget -nc -nv -O android-ndk-r28-linux.zip "https://dl.google.com/android/repository/android-ndk-r28-linux.zip"
+        echo "Downloading Android NDK r26d..."
+        wget -nc -nv -O android-ndk-r26d-linux.zip "https://dl.google.com/android/repository/android-ndk-r26d-linux.zip"
 
     - name: Extract NDK
       run: |
         echo "Extracting Android NDK..."
-        unzip -q android-ndk-r28-linux.zip
+        unzip -q android-ndk-r26d-linux.zip
+        mv android-ndk-r26d android-ndk-r28
         echo "NDK extracted successfully"
 
     - name: Download Boot JDK 24
