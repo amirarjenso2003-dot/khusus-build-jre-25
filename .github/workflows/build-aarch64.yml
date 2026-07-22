@@ -9,6 +9,7 @@ jobs:
   build_aarch64:
     name: "Build JRE 25 for Android aarch64"
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     
     steps:
     - name: Checkout repository
@@ -19,6 +20,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           autoconf \
+          build-essential \
           python3 \
           python-is-python3 \
           unzip \
@@ -37,21 +39,88 @@ jobs:
           libxi-dev \
           libfreetype6-dev \
           libpng-dev
+        echo "Build dependencies installed successfully"
 
-    - name: Configure devkit paths
+    - name: Download Android NDK r28
       run: |
-        cat > set_devkit_path.sh << 'EOF'
-        #!/bin/bash
-        export TARGET=${TARGET:-aarch64-linux-android}
-        export TARGET_JDK=${TARGET_JDK:-aarch64}
-        export TARGET_SHORT=${TARGET_SHORT:-arm64}
-        export NDK_PREBUILT_ARCH=${NDK_PREBUILT_ARCH:-aarch64}
-        export NDK_VERSION=${NDK_VERSION:-r28}
-        export BUILD_FREETYPE_VERSION=${BUILD_FREETYPE_VERSION:-2.10.0}
-        export JVM_PLATFORM=linux
+        echo "Downloading Android NDK r28..."
+        if [ -f android-ndk-r28-linux.zip ]; then
+          echo "NDK already downloaded"
+        else
+          wget -q --show-progress https://dl.google.com/android/repository/android-ndk-r28-linux.zip
+        fi
+        echo "NDK download complete"
+
+    - name: Extract Android NDK r28
+      run: |
+        echo "Extracting Android NDK r28..."
+        unzip -q android-ndk-r28-linux.zip
+        ls -la android-ndk-r28 | head -20
+        echo "NDK extracted successfully"
+
+    - name: Download Boot JDK 24
+      run: |
+        echo "Downloading Boot JDK 24.0.1+9 (Adoptium Temurin)..."
+        wget -q --show-progress https://github.com/adoptium/temurin24-binaries/releases/download/jdk-24.0.1%2B9/OpenJDK24U-jdk_x64_linux_hotspot_24.0.1_9.tar.gz
+        echo "Extracting Boot JDK..."
+        tar -xzf OpenJDK24U-jdk_x64_linux_hotspot_24.0.1_9.tar.gz
+        echo "Verifying Boot JDK..."
+        jdk-24.0.1+9/bin/java -version
+        echo "Boot JDK ready at: $PWD/jdk-24.0.1+9"
+
+    - name: Download CUPS library
+      run: |
+        echo "Downloading CUPS 2.2.4..."
+        wget -q --show-progress https://github.com/apple/cups/releases/download/v2.2.4/cups-2.2.4-source.tar.gz
+        tar -xzf cups-2.2.4-source.tar.gz
+        echo "CUPS downloaded and extracted"
+
+    - name: Download Freetype library
+      run: |
+        echo "Downloading Freetype 2.10.0..."
+        wget -q --show-progress https://download.sourceforge.net/freetype/freetype-2.10.0.tar.gz
+        tar -xzf freetype-2.10.0.tar.gz
+        echo "Freetype downloaded and extracted"
+
+    - name: Build Freetype for Android
+      run: |
+        cd freetype-2.10.0
+        echo "Building Freetype for aarch64..."
         
-        export TOOLCHAIN=$PWD/android-ndk-$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64
-        export ANDROID_INCLUDE=$PWD/android-ndk-$NDK_VERSION/sysroot/usr/include
+        export TOOLCHAIN=$PWD/../android-ndk-r28/toolchains/llvm/prebuilt/linux-x86_64
+        export PATH=$TOOLCHAIN/bin:$PATH
+        
+        ./configure \
+          --host=aarch64-linux-android \
+          --prefix=$PWD/build_android-arm64 \
+          --without-zlib \
+          --with-png=no \
+          --with-harfbuzz=no
+        
+        echo "Building Freetype..."
+        CFLAGS=-fno-rtti CXXFLAGS=-fno-rtti make -j$(nproc)
+        make install
+        
+        echo "Freetype build complete"
+        ls -la build_android-arm64/lib/
+
+    - name: Clone OpenJDK 25u
+      run: |
+        echo "Cloning OpenJDK 25u repository..."
+        git clone --depth 1 https://github.com/openjdk/jdk25u openjdk
+        cd openjdk
+        echo "OpenJDK cloned successfully"
+        echo "Version: $(cat make/conf/version-numbers.conf)"
+
+    - name: Build OpenJDK 25
+      run: |
+        cd openjdk
+        
+        export TOOLCHAIN=$PWD/../android-ndk-r28/toolchains/llvm/prebuilt/linux-x86_64
+        export ANDROID_SYSROOT=$PWD/../android-ndk-r28/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+        export FREETYPE_DIR=$PWD/../freetype-2.10.0/build_android-arm64
+        export CUPS_DIR=$PWD/../cups-2.2.4
+        export BOOT_JDK=$PWD/../jdk-24.0.1+9
         
         export CC=$TOOLCHAIN/bin/aarch64-linux-android24-clang
         export CXX=$TOOLCHAIN/bin/aarch64-linux-android24-clang++
@@ -60,179 +129,85 @@ jobs:
         export OBJCOPY=$TOOLCHAIN/bin/llvm-objcopy
         export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
         
-        export PATH=$TOOLCHAIN/bin:$PATH
+        export CFLAGS="-O3 -fno-strict-aliasing -fPIC"
+        export CXXFLAGS="-O3 -fno-strict-aliasing -fPIC"
+        export LDFLAGS=""
         
-        echo "Target: $TARGET"
+        echo "=== Configuration Summary ==="
         echo "Toolchain: $TOOLCHAIN"
-        echo "Android Include: $ANDROID_INCLUDE"
-        EOF
-        chmod +x set_devkit_path.sh
-
-    - name: Download Android NDK r28
-      run: |
-        echo "Downloading Android NDK r28..."
-        wget -nc -nv -O android-ndk-r28-linux.zip "https://dl.google.com/android/repository/android-ndk-r28-linux.zip"
-
-    - name: Extract NDK
-      run: |
-        echo "Extracting Android NDK..."
-        unzip -q android-ndk-r28-linux.zip
-        echo "NDK extracted successfully"
-
-    - name: Download Boot JDK 24
-      run: |
-        echo "Downloading Boot JDK 24 (Adoptium Temurin 24.0.1+8)..."
-        cd /tmp
-        wget -nv https://github.com/adoptium/temurin24-binaries/releases/download/jdk-24.0.1%2B8/OpenJDK24U-jdk_x64_linux_hotspot_24.0.1_8.tar.gz
-        tar -xzf OpenJDK24U-jdk_x64_linux_hotspot_24.0.1_8.tar.gz
-        cd -
-        mv /tmp/jdk-24.0.1+8 $PWD/jdk-24
-        echo "Boot JDK ready at: $PWD/jdk-24"
-        $PWD/jdk-24/bin/java -version
-
-    - name: Download required libraries
-      run: |
-        echo "Downloading required libraries..."
-        echo "Downloading CUPS 2.2.4..."
-        wget -nc -nv https://github.com/apple/cups/releases/download/v2.2.4/cups-2.2.4-source.tar.gz
-        tar -xzf cups-2.2.4-source.tar.gz
-        echo "Downloading Freetype 2.10.0..."
-        wget -nc -nv https://download.sourceforge.net/freetype/freetype-2.10.0.tar.gz
-        tar -xzf freetype-2.10.0.tar.gz
-        echo "Libraries downloaded successfully"
-
-    - name: Build Freetype for Android
-      run: |
-        . set_devkit_path.sh
-        cd freetype-2.10.0
-        echo "Building Freetype..."
-        export PATH=$TOOLCHAIN/bin:$PATH
-        ./configure \
-          --host=aarch64-linux-android \
-          --prefix=${PWD}/build_android-arm64 \
-          --without-zlib \
-          --with-png=no \
-          --with-harfbuzz=no \
-          || error_code=$?
+        echo "Freetype: $FREETYPE_DIR"
+        echo "CUPS: $CUPS_DIR"
+        echo "Boot JDK: $BOOT_JDK"
+        echo "================================"
         
-        if [[ "$error_code" -ne 0 ]]; then
-          echo "Configure error:"
-          tail -50 config.log
-          exit $error_code
-        fi
-        
-        CFLAGS=-fno-rtti CXXFLAGS=-fno-rtti make -j4
-        make install
-        cd ..
-        echo "Freetype built successfully"
-
-    - name: Clone OpenJDK 25u
-      run: |
-        echo "Cloning OpenJDK 25u repository..."
-        git clone --depth 1 https://github.com/openjdk/jdk25u openjdk
-        echo "OpenJDK cloned successfully"
-
-    - name: Build OpenJDK 25
-      run: |
-        . set_devkit_path.sh
-        
-        export FREETYPE_DIR=$PWD/freetype-2.10.0/build_android-arm64
-        export CUPS_DIR=$PWD/cups-2.2.4
-        export CFLAGS+=" -DLE_STANDALONE -O3 -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration"
-        export CXXFLAGS+=" -DLE_STANDALONE -O3 -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration"
-        export LDFLAGS+=" -L$PWD/dummy_libs"
-        
-        mkdir -p $ANDROID_INCLUDE
-        ln -s -f /usr/include/X11 $ANDROID_INCLUDE/ 2>/dev/null || true
-        ln -s -f /usr/include/fontconfig $ANDROID_INCLUDE/ 2>/dev/null || true
-        
-        mkdir -p dummy_libs
-        ar cru dummy_libs/libpthread.a
-        ar cru dummy_libs/librt.a
-        ar cru dummy_libs/libthread_db.a
-        
-        ln -s -f $CUPS_DIR/cups $ANDROID_INCLUDE/
-        
-        cd openjdk
+        mkdir -p build_deps/lib
+        ar cru build_deps/lib/libpthread.a
+        ar cru build_deps/lib/librt.a
+        ar cru build_deps/lib/libthread_db.a
         
         echo "Configuring OpenJDK 25..."
         bash ./configure \
-            --with-boot-jdk=$PWD/../jdk-24 \
-            --openjdk-target=aarch64-linux-android \
-            --with-toolchain-type=clang \
-            --with-extra-cflags="$CFLAGS" \
-            --with-extra-cxxflags="$CXXFLAGS" \
-            --with-extra-ldflags="$LDFLAGS" \
-            --disable-precompiled-headers \
-            --disable-warnings-as-errors \
-            --enable-option-checking=fatal \
-            --enable-headless-only=yes \
-            --with-jvm-variants=server \
-            --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc \
-            --with-cups-include=$CUPS_DIR \
-            --with-freetype-include=$FREETYPE_DIR/include/freetype2 \
-            --with-freetype-lib=$FREETYPE_DIR/lib \
-            --with-native-debug-symbols=external \
-            --with-debug-level=release \
-            --with-fontconfig-include=$ANDROID_INCLUDE \
-            --build=x86_64-unknown-linux-gnu || \
-        error_code=$?
+          --with-boot-jdk=$BOOT_JDK \
+          --openjdk-target=aarch64-linux-android \
+          --with-toolchain-type=clang \
+          --with-extra-cflags="$CFLAGS" \
+          --with-extra-cxxflags="$CXXFLAGS" \
+          --disable-precompiled-headers \
+          --disable-warnings-as-errors \
+          --enable-option-checking=fatal \
+          --enable-headless-only=yes \
+          --with-jvm-variants=server \
+          --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc \
+          --with-cups-include=$CUPS_DIR \
+          --with-freetype-include=$FREETYPE_DIR/include/freetype2 \
+          --with-freetype-lib=$FREETYPE_DIR/lib \
+          --with-fontconfig-include=$ANDROID_SYSROOT/usr/include \
+          --with-native-debug-symbols=external \
+          --with-debug-level=release \
+          --build=x86_64-unknown-linux-gnu
         
-        if [[ "$error_code" -ne 0 ]]; then
-          echo "CONFIGURE ERROR, showing last 100 lines of config.log:"
-          tail -100 config.log
-          exit $error_code
+        if [ $? -ne 0 ]; then
+          echo "Configure failed, showing errors:"
+          tail -200 config.log
+          exit 1
         fi
         
         echo "Building OpenJDK 25..."
         cd build/linux-aarch64-server-release
-        make JOBS=4 images || \
-        error_code=$?
-        if [[ "$error_code" -ne 0 ]]; then
-          echo "Build failed, retrying..."
-          make JOBS=4 images
-        fi
-        echo "Build complete!"
-
-    - name: Strip debug symbols
-      run: |
-        . set_devkit_path.sh
+        make JOBS=$(nproc) images
         
-        echo "Removing debug symbols..."
-        BUILD_DIR="openjdk/build/linux-aarch64-server-release"
+        if [ $? -ne 0 ]; then
+          echo "Build failed on first attempt, retrying..."
+          make JOBS=$(nproc) images
+        fi
+        
+        echo "OpenJDK 25 build complete!"
+
+    - name: Strip and Package JRE
+      run: |
+        export TOOLCHAIN=$PWD/android-ndk-r28/toolchains/llvm/prebuilt/linux-x86_64
+        export STRIP=$TOOLCHAIN/bin/llvm-strip
+        
+        BUILD_DIR="$PWD/openjdk/build/linux-aarch64-server-release"
         JRE_DIR="$BUILD_DIR/jdk/jre"
         
         if [ ! -d "$JRE_DIR" ]; then
-          echo "JRE directory not found: $JRE_DIR"
+          echo "ERROR: JRE directory not found at $JRE_DIR"
+          ls -la $BUILD_DIR/
           exit 1
         fi
         
-        echo "Stripping binaries..."
+        echo "Stripping debug symbols..."
         find $JRE_DIR -type f -name "*.so" -exec $STRIP {} \;
         find $JRE_DIR/bin -type f -executable -exec $STRIP {} \; 2>/dev/null || true
-        echo "Debug symbols removed"
-
-    - name: Package JRE
-      run: |
-        . set_devkit_path.sh
         
         echo "Packaging JRE..."
-        BUILD_DIR="openjdk/build/linux-aarch64-server-release"
-        JRE_DIR="$BUILD_DIR/jdk/jre"
-        
-        if [ ! -d "$JRE_DIR" ]; then
-          echo "JRE directory not found: $JRE_DIR"
-          exit 1
-        fi
-        
         cd $BUILD_DIR
-        echo "Creating archive: jre25-aarch64.tar.xz"
-        tar --xz -cf ../../../../jre25-aarch64.tar.xz jdk/jre
-        cd ../../../../
+        tar --xz -cf $PWD/../../../jre25-aarch64.tar.xz jdk/jre
         
-        echo "Archive created successfully"
+        cd $PWD/../../../
         ls -lh jre25-aarch64.tar.xz
-        echo "Checksum: $(sha256sum jre25-aarch64.tar.xz)"
+        sha256sum jre25-aarch64.tar.xz
 
     - name: Upload JRE artifact
       uses: actions/upload-artifact@v4
@@ -240,6 +215,7 @@ jobs:
         name: jre25-aarch64
         path: jre25-aarch64.tar.xz
         retention-days: 30
+        if-no-files-found: error
 
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
