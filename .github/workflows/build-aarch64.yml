@@ -118,36 +118,6 @@ jobs:
         export CUPS_DIR=$PWD/cups-2.2.4
         export BOOT_JDK=$PWD/jdk-24.0.2
 
-        # Wrapper Compiler dengan Target API Level eksplisit
-        mkdir -p $PWD/compiler_wrapper
-        cat > $PWD/compiler_wrapper/clang << 'EOF'
-        #!/bin/bash
-        REAL_CC="/android-ndk-r28/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
-        for arg in "$@"; do
-          if [ "$arg" = "-V" ] || [ "$arg" = "-qversion" ]; then
-            exec /usr/bin/clang --version
-          fi
-        done
-        exec $REAL_CC --target=aarch64-linux-android24 "$@"
-        EOF
-        
-        cat > $PWD/compiler_wrapper/clang++ << 'EOF'
-        #!/bin/bash
-        REAL_CXX="/android-ndk-r28/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++"
-        for arg in "$@"; do
-          if [ "$arg" = "-V" ] || [ "$arg" = "-qversion" ]; then
-            exec /usr/bin/clang++ --version
-          fi
-        done
-        exec $REAL_CXX --target=aarch64-linux-android24 "$@"
-        EOF
-        
-        sed -i "s|/android-ndk-r28|$PWD/android-ndk-r28|g" $PWD/compiler_wrapper/clang
-        sed -i "s|/android-ndk-r28|$PWD/android-ndk-r28|g" $PWD/compiler_wrapper/clang++
-        chmod +x $PWD/compiler_wrapper/clang $PWD/compiler_wrapper/clang++
-        
-        export PATH=$PWD/compiler_wrapper:$PATH
-
         export CFLAGS="-O3 -fPIC -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types"
         export CXXFLAGS="-O3 -fPIC -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types"
         export LDFLAGS="-L$PWD/dummy_libs"
@@ -185,7 +155,9 @@ jobs:
             --with-fontconfig-include=$SYSROOT/usr/include \
             --with-native-debug-symbols=external \
             --with-debug-level=release \
-            --build=x86_64-unknown-linux-gnu || {
+            --build=x86_64-unknown-linux-gnu \
+            ac_cv_prog_cc_works=yes \
+            ac_cv_prog_cxx_works=yes || {
           echo "=== CONFIGURE FAILED ==="
           grep -i "error" config.log | tail -n 40
           exit 1
