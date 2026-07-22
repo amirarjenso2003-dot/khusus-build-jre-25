@@ -118,7 +118,7 @@ jobs:
         export CUPS_DIR=$PWD/cups-2.2.4
         export BOOT_JDK=$PWD/jdk-24.0.2
 
-        # Buat Wrapper Compiler untuk mengatasi bug pemeriksaan -V Clang host
+        # Wrapper Compiler dengan Target API Level eksplisit
         mkdir -p $PWD/compiler_wrapper
         cat > $PWD/compiler_wrapper/clang << 'EOF'
         #!/bin/bash
@@ -128,7 +128,7 @@ jobs:
             exec /usr/bin/clang --version
           fi
         done
-        exec $REAL_CC "$@"
+        exec $REAL_CC --target=aarch64-linux-android24 "$@"
         EOF
         
         cat > $PWD/compiler_wrapper/clang++ << 'EOF'
@@ -139,7 +139,7 @@ jobs:
             exec /usr/bin/clang++ --version
           fi
         done
-        exec $REAL_CXX "$@"
+        exec $REAL_CXX --target=aarch64-linux-android24 "$@"
         EOF
         
         sed -i "s|/android-ndk-r28|$PWD/android-ndk-r28|g" $PWD/compiler_wrapper/clang
