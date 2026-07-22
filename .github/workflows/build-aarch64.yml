@@ -118,6 +118,12 @@ jobs:
         export CUPS_DIR=$PWD/cups-2.2.4
         export BOOT_JDK=$PWD/jdk-24.0.2
 
+        export CC=$TOOLCHAIN/bin/aarch64-linux-android24-clang
+        export CXX=$TOOLCHAIN/bin/aarch64-linux-android24-clang++
+        export AR=$TOOLCHAIN/bin/llvm-ar
+        export LD=$TOOLCHAIN/bin/ld.lld
+        export AS=$TOOLCHAIN/bin/llvm-as
+
         export CFLAGS="-O3 -fPIC -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types"
         export CXXFLAGS="-O3 -fPIC -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types"
         export LDFLAGS="-L$PWD/dummy_libs"
@@ -155,9 +161,7 @@ jobs:
             --with-fontconfig-include=$SYSROOT/usr/include \
             --with-native-debug-symbols=external \
             --with-debug-level=release \
-            --build=x86_64-unknown-linux-gnu \
-            CC=$TOOLCHAIN/bin/aarch64-linux-android24-clang \
-            CXX=$TOOLCHAIN/bin/aarch64-linux-android24-clang++ || {
+            --build=x86_64-unknown-linux-gnu || {
           echo "=== CONFIGURE FAILED ==="
           grep -i "error" config.log | tail -n 40
           exit 1
