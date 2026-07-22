@@ -53,8 +53,8 @@ jobs:
         export TOOLCHAIN=$PWD/android-ndk-$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64
         export ANDROID_INCLUDE=$PWD/android-ndk-$NDK_VERSION/sysroot/usr/include
         
-        export CC=$TOOLCHAIN/bin/aarch64-linux-android24-clang
-        export CXX=$TOOLCHAIN/bin/aarch64-linux-android24-clang++
+        export CC=$TOOLCHAIN/bin/clang
+        export CXX=$TOOLCHAIN/bin/clang++
         export AR=$TOOLCHAIN/bin/llvm-ar
         export STRIP=$TOOLCHAIN/bin/llvm-strip
         export OBJCOPY=$TOOLCHAIN/bin/llvm-objcopy
@@ -81,12 +81,14 @@ jobs:
 
     - name: Download Boot JDK 24
       run: |
-        echo "Downloading Boot JDK..."
-        wget -nc -nv -O openjdk-boot.tar.gz "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.4%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.4_7.tar.gz"
-        echo "Extracting Boot JDK..."
-        tar -xzf openjdk-boot.tar.gz
-        mv jdk-21* jdk-24.0.2
-        echo "Boot JDK ready at: $PWD/jdk-24.0.2"
+        echo "Downloading JDK 24 (Boot JDK for building JDK 25)..."
+        cd /tmp
+        wget -nv https://github.com/adoptium/temurin24-binaries/releases/download/jdk-24.0.1%2B8/OpenJDK24U-jdk_x64_linux_hotspot_24.0.1_8.tar.gz
+        tar -xzf OpenJDK24U-jdk_x64_linux_hotspot_24.0.1_8.tar.gz
+        cd -
+        mv /tmp/jdk-24.0.1+8 $PWD/jdk-24
+        echo "Boot JDK ready at: $PWD/jdk-24"
+        $PWD/jdk-24/bin/java -version
 
     - name: Download required libraries
       run: |
@@ -136,9 +138,8 @@ jobs:
         
         export FREETYPE_DIR=$PWD/freetype-2.10.0/build_android-arm64
         export CUPS_DIR=$PWD/cups-2.2.4
-        export CFLAGS+=" -DLE_STANDALONE -O3 -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration"
-        export CXXFLAGS+=" -DLE_STANDALONE -O3 -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration"
-        export LDFLAGS+=" -L$PWD/dummy_libs"
+        export CFLAGS+=" -DLE_STANDALONE -O3"
+        export CXXFLAGS+=" -DLE_STANDALONE -O3"
         
         mkdir -p $ANDROID_INCLUDE
         ln -s -f /usr/include/X11 $ANDROID_INCLUDE/ 2>/dev/null || true
@@ -155,12 +156,12 @@ jobs:
         
         echo "Configuring OpenJDK 25..."
         bash ./configure \
-            --with-boot-jdk=$PWD/../jdk-24.0.2 \
+            --with-boot-jdk=$PWD/../jdk-24 \
             --openjdk-target=aarch64-linux-android \
             --with-toolchain-type=clang \
-            --with-extra-cflags="$CFLAGS" \
-            --with-extra-cxxflags="$CXXFLAGS" \
-            --with-extra-ldflags="$LDFLAGS" \
+            --with-extra-cflags="$CFLAGS -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration" \
+            --with-extra-cxxflags="$CXXFLAGS -DANDROID -D__ANDROID__=1 -Wno-int-conversion -Wno-error=implicit-function-declaration" \
+            --with-extra-ldflags=" -L$PWD/../dummy_libs" \
             --disable-precompiled-headers \
             --disable-warnings-as-errors \
             --enable-option-checking=fatal \
