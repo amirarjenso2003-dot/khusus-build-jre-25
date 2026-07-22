@@ -156,7 +156,6 @@ jobs:
             --with-native-debug-symbols=external \
             --with-debug-level=release \
             --build=x86_64-unknown-linux-gnu \
-            --host=aarch64-linux-android \
             CC=$TOOLCHAIN/bin/aarch64-linux-android24-clang \
             CXX=$TOOLCHAIN/bin/aarch64-linux-android24-clang++ || {
           echo "=== CONFIGURE FAILED ==="
