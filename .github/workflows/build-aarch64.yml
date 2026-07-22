@@ -79,16 +79,16 @@ jobs:
         unzip -q android-ndk-r28-linux.zip
         echo "NDK extracted successfully"
 
-    - name: Download Boot JDK 21 LTS
+    - name: Download Boot JDK 24
       run: |
-        echo "Downloading Boot JDK 21 LTS (Adoptium Temurin)..."
+        echo "Downloading Boot JDK 24 (Adoptium Temurin 24.0.1+8)..."
         cd /tmp
-        wget -nv https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.4%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.4_7.tar.gz
-        tar -xzf OpenJDK21U-jdk_x64_linux_hotspot_21.0.4_7.tar.gz
+        wget -nv https://github.com/adoptium/temurin24-binaries/releases/download/jdk-24.0.1%2B8/OpenJDK24U-jdk_x64_linux_hotspot_24.0.1_8.tar.gz
+        tar -xzf OpenJDK24U-jdk_x64_linux_hotspot_24.0.1_8.tar.gz
         cd -
-        mv /tmp/jdk-21.0.4+7 $PWD/jdk-24.0.2
-        echo "Boot JDK ready at: $PWD/jdk-24.0.2"
-        $PWD/jdk-24.0.2/bin/java -version
+        mv /tmp/jdk-24.0.1+8 $PWD/jdk-24
+        echo "Boot JDK ready at: $PWD/jdk-24"
+        $PWD/jdk-24/bin/java -version
 
     - name: Download required libraries
       run: |
@@ -157,7 +157,7 @@ jobs:
         
         echo "Configuring OpenJDK 25..."
         bash ./configure \
-            --with-boot-jdk=$PWD/../jdk-24.0.2 \
+            --with-boot-jdk=$PWD/../jdk-24 \
             --openjdk-target=aarch64-linux-android \
             --with-toolchain-type=clang \
             --with-extra-cflags="$CFLAGS" \
