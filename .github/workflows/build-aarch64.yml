@@ -1,185 +1,29 @@
-name: Build OpenJDK 25 for Android aarch64
+name: Build JRE 25 (AArch64)
 
 on:
   push:
-  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  build_aarch64:
-    name: "Build JRE 25 for Android aarch64"
-    runs-on: ubuntu-latest
-    
+  build-aarch64:
+    runs-on: ubuntu-24.04-arm # Memakai runner ARM64 native dari GitHub
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up build environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          autoconf \
-          python3 \
-          python-is-python3 \
-          unzip \
-          zip \
-          systemtap-sdt-dev \
-          libxtst-dev \
-          libasound2-dev \
-          libelf-dev \
-          libfontconfig1-dev \
-          libx11-dev \
-          libxext-dev \
-          libxrandr-dev \
-          libxrender-dev \
-          libxinerama-dev \
-          libxcursor-dev \
-          libxi-dev \
-          libfreetype6-dev \
-          libpng-dev
+      - name: Setup Bootstrap JDK (Java 24)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
 
-    - name: Download Android NDK r26d
-      run: |
-        echo "Downloading Android NDK r26d..."
-        wget -nc -nv -O android-ndk-r26d-linux.zip "https://dl.google.com/android/repository/android-ndk-r26d-linux.zip"
-        unzip -q android-ndk-r26d-linux.zip
-        echo "NDK ready."
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libfontconfig1-dev \
+            libfreetype6-dev libx11-dev libxext-dev libxrender-dev \
+            libxrandr-dev libxtst-dev libxt-dev libalsa-sound2-dev libcups2-dev
 
-    - name: Download Boot JDK 24
-      run: |
-        echo "Downloading Boot JDK 24..."
-        wget -nc -nv -O openjdk-boot.tar.gz "https://github.com/adoptium/temurin24-binaries/releases/download/jdk-24%2B36/OpenJDK24U-jdk_x64_linux_hotspot_24_36.tar.gz"
-        tar -xzf openjdk-boot.tar.gz
-        rm -rf $PWD/jdk-24.0.2
-        mv jdk-24* $PWD/jdk-24.0.2
-        echo "Boot JDK ready."
-
-    - name: Download required libraries
-      run: |
-        echo "Downloading CUPS 2.2.4..."
-        wget -nc -nv https://github.com/apple/cups/releases/download/v2.2.4/cups-2.2.4-source.tar.gz
-        tar -xzf cups-2.2.4-source.tar.gz
-        
-        echo "Downloading Freetype 2.10.0..."
-        wget -nc -nv https://download.sourceforge.net/freetype/freetype-2.10.0.tar.gz
-        tar -xzf freetype-2.10.0.tar.gz
-
-    - name: Build Freetype for Android
-      run: |
-        export TOOLCHAIN=$PWD/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64
-        export CC=$TOOLCHAIN/bin/aarch64-linux-android24-clang
-        export CXX=$TOOLCHAIN/bin/aarch64-linux-android24-clang++
-        export PATH=$TOOLCHAIN/bin:$PATH
-
-        cd freetype-2.10.0
-        ./configure \
-          --host=aarch64-linux-android \
-          --prefix=${PWD}/build_android-arm64 \
-          --without-zlib \
-          --with-png=no \
-          --with-harfbuzz=no || { cat config.log; exit 1; }
-        
-        CFLAGS=-fno-rtti CXXFLAGS=-fno-rtti make -j4
-        make install
-
-    - name: Clone OpenJDK 25u
-      run: |
-        git clone --depth 1 https://github.com/openjdk/jdk25u openjdk
-
-    - name: Build OpenJDK 25
-      run: |
-        export TOOLCHAIN=$PWD/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64
-        export SYSROOT=$TOOLCHAIN/sysroot
-        export FREETYPE_DIR=$PWD/freetype-2.10.0/build_android-arm64
-        export CUPS_DIR=$PWD/cups-2.2.4
-        export BOOT_JDK=$PWD/jdk-24.0.2
-
-        export CFLAGS="-O3 -fPIC -DANDROID -D__ANDROID__=1 -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types"
-        export CXXFLAGS="$CFLAGS"
-        export LDFLAGS="-L$SYSROOT/usr/lib/aarch64-linux-android/24 -L$SYSROOT/usr/lib/aarch64-linux-android -L$PWD/dummy_libs"
-        
-        mkdir -p $SYSROOT/usr/include
-        ln -s -f /usr/include/X11 $SYSROOT/usr/include/ 2>/dev/null || true
-        ln -s -f /usr/include/fontconfig $SYSROOT/usr/include/ 2>/dev/null || true
-        ln -s -f $CUPS_DIR/cups $SYSROOT/usr/include/ 2>/dev/null || true
-        
-        mkdir -p dummy_libs
-        ar cru dummy_libs/libpthread.a
-        ar cru dummy_libs/librt.a
-        ar cru dummy_libs/libthread_db.a
-        
-        cd openjdk
-        
-        echo "=== STARTING CONFIGURE ==="
-        bash ./configure \
-            --openjdk-target=aarch64-linux-android \
-            --build=x86_64-unknown-linux-gnu \
-            --with-sysroot=$SYSROOT \
-            --with-boot-jdk=$BOOT_JDK \
-            --with-toolchain-type=clang \
-            --disable-precompiled-headers \
-            --disable-warnings-as-errors \
-            --enable-headless-only=yes \
-            --with-jvm-variants=server \
-            --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc \
-            --with-cups-include=$CUPS_DIR \
-            --with-freetype-include=$FREETYPE_DIR/include/freetype2 \
-            --with-freetype-lib=$FREETYPE_DIR/lib \
-            --with-fontconfig-include=$SYSROOT/usr/include \
-            --with-native-debug-symbols=external \
-            --with-debug-level=release \
-            --with-extra-cflags="$CFLAGS" \
-            --with-extra-cxxflags="$CXXFLAGS" \
-            --with-extra-ldflags="$LDFLAGS" \
-            AR="$TOOLCHAIN/bin/llvm-ar" \
-            NM="$TOOLCHAIN/bin/llvm-nm" \
-            LD="$TOOLCHAIN/bin/ld.lld" \
-            OBJCOPY="$TOOLCHAIN/bin/llvm-objcopy" \
-            OBJDUMP="$TOOLCHAIN/bin/llvm-objdump" \
-            STRIP="$TOOLCHAIN/bin/llvm-strip" \
-            CC="$TOOLCHAIN/bin/aarch64-linux-android24-clang" \
-            CXX="$TOOLCHAIN/bin/aarch64-linux-android24-clang++" || {
-          echo "=== CONFIGURE FAILED ==="
-          cat build/*/config.log || cat config.log
-          exit 1
-        }
-        
-        echo "=== STARTING BUILD ==="
-        make JOBS=4 images || make JOBS=4 images
-
-    - name: Strip debug symbols
-      run: |
-        export STRIP=$PWD/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
-        BUILD_DIR="openjdk/build/linux-aarch64-server-release"
-        JRE_DIR="$BUILD_DIR/jdk/jre"
-        
-        if [ ! -d "$JRE_DIR" ]; then
-          echo "JRE directory not found!"
-          exit 1
-        fi
-        
-        find $JRE_DIR -type f -name "*.so" -exec $STRIP {} \;
-        find $JRE_DIR/bin -type f -executable -exec $STRIP {} \; 2>/dev/null || true
-
-    - name: Package JRE
-      run: |
-        BUILD_DIR="openjdk/build/linux-aarch64-server-release"
-        cd $BUILD_DIR
-        tar --xz -cf ../../../../jre25-aarch64.tar.xz jdk/jre
-        cd ../../../../
-        ls -lh jre25-aarch64.tar.xz
-
-    - name: Upload JRE artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: jre25-aarch64
-        path: jre25-aarch64.tar.xz
-        retention-days: 30
-
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: jre25-aarch64.tar.xz
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Masukkan baris perintah build / configure / make kamu di bawah ini
