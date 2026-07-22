@@ -1,6 +1,55 @@
-- name: Install Build Dependencies
-        run:
+name: Build JRE 25 (AArch64)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-aarch64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Bootstrap JDK (Java 24)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+
+      - name: Install Build Dependencies
+        run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libfontconfig1-dev \
-            libfreetype6-dev libx11-dev libxext-dev libxrender-dev \
-            libxrandr-dev libxtst-dev libxt-dev libasound2-dev libcups2-dev
+          sudo apt-get install -y \
+            build-essential \
+            autoconf \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrender-dev \
+            libxrandr-dev \
+            libxtst-dev \
+            libxt-dev \
+            libasound2-dev \
+            libcups2-dev \
+            libffi-dev
+
+      - name: Configure OpenJDK / JRE
+        run: |
+          bash configure \
+            --with-boot-jdk=$JAVA_HOME \
+            --with-debug-level=release \
+            --disable-warnings-as-errors
+
+      - name: Build JRE / JDK Image
+        run: |
+          make images
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jre-25-aarch64
+          path: build/*/images/jdk
