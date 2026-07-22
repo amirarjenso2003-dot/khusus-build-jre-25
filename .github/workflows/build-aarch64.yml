@@ -51,12 +51,12 @@ jobs:
 
     - name: Download Boot JDK 24
       run: |
-        echo "Downloading Boot JDK..."
-        wget -nc -nv -O openjdk-boot.tar.gz "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.4%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.4_7.tar.gz"
+        echo "Downloading Boot JDK 24..."
+        wget -nc -nv -O openjdk-boot.tar.gz "https://github.com/adoptium/temurin24-binaries/releases/download/jdk-24%2B36/OpenJDK24U-jdk_x64_linux_hotspot_24_36.tar.gz"
         echo "Extracting Boot JDK..."
         tar -xzf openjdk-boot.tar.gz
         rm -rf $PWD/jdk-24.0.2
-        mv jdk-21* $PWD/jdk-24.0.2
+        mv jdk-24* $PWD/jdk-24.0.2
         echo "Boot JDK ready at: $PWD/jdk-24.0.2"
 
     - name: Download required libraries
